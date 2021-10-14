@@ -1,5 +1,6 @@
 # Semisimplicial
 Semisimplicial types in Agda
+
 This Agda code gives the first definition of (augmented) semisimplicial types which is expected to be correct in univalent type theory.
 We use a particular well-ordered filtration of the N-simplex, well-known in the simplicial complex community,
 to inductively define an (augmented) N-truncated semisimplicial type X
