@@ -1,189 +1,250 @@
 {-# OPTIONS --without-K #-}
--- Big-endian binary natural numbers in agda.
--- The type of natural numbers is called Simp, because of a canonical bijection between (binary) natural numbers
--- and the simplices of the standard ∞-dimensional simple.
--- The type of bineary natural numbers with leading zeros is called Face, because of a canonical biejction
--- between such data and face maps of standard simplices.
--- For both data types, we keep track of the number of bits and the number of 1's in the type signature.
--- This is because we are interested in thinking about face maps, and this data encodes the (co)domains of these maps.
--- Based off little-endian agda code by Anders Mortberg 
--- https://github.com/agda/cubical/blob/master/Cubical/Data/BinNat/BinNat.agda
-
--- Besides a few variants of the successor relation (we do not prove the relation is functional here),
--- This module also provides the relation isPB, which is relevant to the simplicial interpretation of
--- binary natural numbers.
-module big-endian where
+module semisimplicial where
+  open import Agda.Primitive
   open import Data.Nat
+  open import big-endian
 
-  -- A "simplex" is the same thing as a big-endian natural number.
-  data Simp : ∀ (n : ℕ) →
-              ∀ (d : ℕ) →
+  -- N-truncated, augmented semisimplicial types.
+  -- Universe polymorphism has not been added yet 
+  -- (should be very easy, at the cost of even more bloat of type signatures).
+  -- There is a canonical bijection between natural numbers (thought of in big-endian encoding) and
+  -- simplices of Δ^∞. An *ideal* is a downward-closed set of simplices in this ordering.
+  -- Each nontrivial ideal is principal, so the ideals are well-ordered by inclusion,
+  -- or equivalently by looking at their last face (the generator of the ideal) and ordering as a natural number.
+  -- Not every simplicial subset of a simplex is an ideal, but among the ideals are the simplices themselves
+  -- (in binary, a simplex is 11...11), as well as the boundaries of simplices (11...10).
+  -- The definition here defines an N-truncated, augmented semismplicial type X by starting with
+  -- an N-1 -truncated, augmented semisimplicial type XUnd, and then inductively defining the set of maps
+  -- into X from each ideal in turn, until we reach the boundary of the N-simplex. 
+  -- Then we supply a set of fillers for these boundaries, i.e. the set of N-simplices.
+  -- Along the way we keep track of face relationships to know how to glue to get from one ideal to the next.
+
+  -- A truncated augmented simplicial set which has simplices of augmented dimension =< N
+  data sSet : ∀ (N : ℕ) → Set₁
+  -- Filling data for spheres of augmented dimension N required to promote from sSet N to sSet (suc N)
+  record FillData {N : ℕ} (XUnd : sSet N) : Set₁
+  
+  -- Build by induction on dimension.
+  data sSet where
+    Aug : Set → sSet 0
+    reedy : ∀ {N : ℕ} → ∀ (XUnd : sSet N) →
+            ∀ (XFill : FillData XUnd) →
+            sSet (suc N)
+  
+  -- Given X and F, tells you the set of ideals in X of the shape "weakly preceeding F"
+  -- Note that "a face with N+1 digits" is a sneaky equivalent to "a simplex with at most N+1 digits"
+  IdealIn : ∀ {N : ℕ} → ∀ (X : sSet N) →
+            ∀ {d : ℕ} → ∀ (F : Face N d) →
+            Set
+  -- Given X G, x, x', tells you whether x' is the G-shaped face of x. 
+  -- F' will be the pullback of F by G, but padded out with zeros to have N bits.
+  -- (It is not explicitly enforced that F' is the pullback, but the constructors will be such
+  -- that no "isFaceOf" relation ever gets built when that is not the case)
+  isFaceOf : ∀ {N : ℕ} → ∀ (X : sSet N) →
+             ∀ {d : ℕ} → {F : Face N d} → ∀ (x : IdealIn X F ) →
+             ∀ {d' : ℕ} → ∀ {F' : Face N d'} → ∀ (x' : IdealIn X F') →
+             ∀ {n' : ℕ} → ∀ (G : Face N n') →
+             Set
+  
+  -- The filling data just needs to tell you how to fill spheres.
+  record FillData {N} XUnd where
+    constructor fillData
+    field
+      FillX : IdealIn XUnd (PreDelta+ N) →
+                          Set
+
+  -- The following type deals with wrapping issues.
+  -- When building an N-truncated semisimplicial type X, we will need to know
+  -- when one ideal x in X was constructed from another ideal y in X
+  -- via particular constructors. But this constructor could have been applied at *any*
+  -- earlier stage k, and so x and y will be wrapped N-k times in the passage from a
+  -- k-truncated semisimplicial set to an N-truncated one. Thus we won't be able to
+  -- directly look at the constructors used to form y from x.
+  -- The type isBuildOf keeps track of this information for us as we wrap things to increasing depth.
+  --
+  -- Let sx be of shape one bigger than x, let y be the last face of x, 
+  -- and let sy be of shape one bigger than y. 
+  -- Then isBuildOf x sx y sy will tell you if sx was built from x by attaching sy at y.
+  isBuildOf : ∀ {N : ℕ} → ∀ (X : sSet N) → 
+              ∀ {d : ℕ} → ∀ {F : Face N d} → ∀ (x : IdealIn X F) → 
+              ∀ {sd : ℕ} → ∀ {sF : Face N sd} → 
+              -- ∀ (fsf : isSucF F sF) →
+              ∀ (sx : IdealIn X sF) →
+              ∀ {e : ℕ} → ∀ {G : Face N e} → ∀ (y : IdealIn X G) →
+              ∀ {se : ℕ} → ∀ {sG : Face N se} → 
+              -- ∀ (gsg : isSucF G sG) →
+              ∀ (sy : IdealIn X sG) →
               Set
-  -- A "face" is the same thing as a big-endian natural number, possibly with leading zeros.
-  data Face : ∀ (n : ℕ) →
-              ∀ (d : ℕ) →
-              Set
-  -- This mutually inductive definition is inspired by a definition of little-endian natural numbers
-  -- which Anders Mortberg has implemented in Agda.
-  -- A simplex is either empty, or it's a face capped by a leading 1.
-  data Simp where
-    emp : Simp zero zero
-    1x : ∀ {n d : ℕ} → Face n d →
-         Simp (suc n) (suc d)
-  -- A face is either just (the inclusion of) a simplex, or it's a face capped with a leading 0.
-  data Face where
-    inc : ∀ {n d : ℕ} → Simp n d →
-          Face n d
-    0x : ∀ {n d : ℕ} → Face n d →
-         Face (suc n) d
+  
+  --These things will be defined inductively, with special cases for N = 0.
+  data IdealIn0 (X0 : Set) :
+                ∀ {d : ℕ} → ∀ (F : Face zero d) →
+                Set where
+    taut0 : ∀ (x : X0) → IdealIn0 X0 (inc emp)
 
-  -- These tell you if there is a carry when taking the successor of your simplex / face. 
-  -- That is, they hold if and only if your simplex / face is all 1's.
-  data ModCarryS : ∀ {n d : ℕ} → Simp n d → 
-                   Set
-  data ModCarryF : ∀ {n d : ℕ} → Face n d → 
-                   Set
-  data ModCarryS where
-    empcarry : ModCarryS emp
-    1carry : ∀ {n d : ℕ} → ∀ {F : Face n d} → ModCarryF F → 
-             ModCarryS (1x F)
-  data ModCarryF where
-    inccarry : ∀ {n d : ℕ} → ∀ {S : Simp n d} → ModCarryS S → 
-               ModCarryF (inc S)
+  data isFaceOf0 (X0 : Set) : 
+                ∀ {d : ℕ} → ∀ {F : Face zero d} → IdealIn0 X0 F →
+                ∀ {d' : ℕ} → ∀ {F' : Face zero d'} → IdealIn0 X0 F' →
+                ∀ {n' : ℕ} → ∀ (G : Face zero n') →
+                Set where
+    refl0 : ∀ (x : X0) → isFaceOf0 X0 (taut0 x) (taut0 x) (inc emp)
 
-  -- isModSuc F sF holds iff 
-  -- F and sF have the same number n of bits AND sF is the successor of F MODULO 2^n
-  -- (isModSuc might be redundant, Really just need it for the carry-over from 1111 to 0000.
-  --  This could be done by hand; 
-  -- possibly it would be annoying if you needed some simplex to be definitionally equal to 1111 to invoke it?)
-  data isModSuc : ∀ {n d : ℕ} → Face n d →
-                  ∀ {d' : ℕ} → Face n d' →
-                  Set
-  --Then isSucF F sF holds iff 
-  --F,sF have the same number on of bits AND sF is the successor of F (in particular, 2^n - 1 has no "flat successor")
-  --Apologies: "flat successor" is a weird name.
-  data isSucF : ∀ {n d : ℕ} → Face n d →
-                ∀ {d' : ℕ} → Face n (suc d') →
-                Set
-  --isSuc is a vanilla successor indicator:
-  -- isSuc S sS holds iff suc(S) = sS (they may fail to have the same number of bits)
-  data isSuc : ∀ {n d : ℕ} → Simp n d →
-               ∀ {n' d' : ℕ} → Simp (suc n') (suc d') →
-               Set
-  data isModSuc where
-    -- suc(0) = 0 mod 2^0
-    msemp : isModSuc (inc emp) (inc emp)
-    -- The mod-successor of 1111 is 0000.
-    mscarry : ∀ {n d : ℕ} → ∀ {F : Face n d} → ∀ {d' : ℕ} → ∀ {msF : Face n d'} → isModSuc F msF →
-                    ModCarryF F →
-                    isModSuc (inc (1x F)) (0x msF)
-    -- If F has a successor sF with the same number of bits, then suc(0F) = 0(sF) (with the same number of bits).
-    ms0x : ∀ {n d : ℕ} → ∀ {F : Face (suc n) d} → ∀ {d' : ℕ} → ∀ {sF : Face (suc n) (suc d')} → isSucF F sF →
-                isModSuc (0x F) (0x sF)
-    -- If F has a successor sF with the same number of bits, then suc(1F) = 1(sF) (with the same number of bits).
-    ms1x : ∀ {n d : ℕ} → ∀ {F : Face (suc n) d} → ∀ {d' : ℕ} → ∀ {sF : Face (suc n) (suc d')} → isSucF F sF →
-                isModSuc (inc (1x F)) (inc (1x sF))
-  data isSucF where
-    -- Note that (inc emp) has no flat-successor.
-    --- This says that the successor of 01111 is 10000 (with the same number of bits)
-    sfcarry : ∀ {n d : ℕ} → ∀ {F : Face n d} → ∀ {d' : ℕ} → ∀ {msF : Face n d'} → isModSuc F msF →
-                   ModCarryF F →
-                   isSucF (0x F) (inc (1x msF))
-    -- This says that if F has a successor sF with the same number of bits, 
-    -- then suc(0F) = 0(sF) (with the same number of bits)
-    sf0x : ∀ {n d : ℕ} → ∀ {F : Face (suc n) d} → ∀ {d' : ℕ} → ∀ {sF : Face (suc n) (suc d')} → isSucF F sF →
-                isSucF (0x F) (0x sF)
-    -- This says that if F has a successor sF with the same number of bits,
-    -- then suc(1F) = 1(sF) (with the same number of bits)
-    sf1x : ∀ {n d : ℕ} → ∀ {F : Face (suc n) d} → ∀ {d' : ℕ} → ∀ {sF : Face (suc n) (suc d')} → isSucF F sF →
-                isSucF (inc (1x F)) (inc (1x sF))
-  data isSuc where
-    -- This says that if (inc S) has a successor (inc sS) with the same number of bits, then S has a successor sS
-    fromsf : ∀ {n d : ℕ} → ∀ {S : Simp (suc n) d} → ∀ {d' : ℕ} → ∀ {sS : Simp (suc n) (suc d')} → isSucF (inc S) (inc sS) →
-                  isSuc S sS
-    -- This says that if (inc S) has a mod-successor msS, 
-    -- and if a carry happened there (so that inc S = 1111 and msS = 0000), 
-    -- then suc(S) = 1(msS)
-    fromcarry : ∀ {n d : ℕ} → ∀ {S : Simp n d} → ∀ {d' : ℕ} → ∀ {msS : Face n d'} → isModSuc (inc S) msS →
-                       ModCarryS S →
-                       isSuc S (1x msS)
-
-  -- isPB F G H holds if and only if 
-  -- the G-face of the ideal represented by F is the ideal represented by H.
-  -- In other words, if F is an ideal and G is a face, then the pullback H of F by G is 
-  -- the ideal obtained by looking at the simplices in F which have 0's wherever G has 0's, 
-  -- and then deleting those bits where G has 0's.
-  --
-  -- This is again an ideal because we are pulling back along the face map G, which
-  -- is an order-preserving self-map of the natural numbers. 
-  --
-  -- G should have the same number of bits as F.
-  -- The resulting H has as many bits as G has 1's.
-  --
-  -- It's natural for G to be of type Face, but F and H should really be of type Simp.
-  -- However, the induction goes smoother if F and G are allowed to be faces.
-  -- Moreover, later we will be using Face's to represent Simp's, using the "hack-y" fact
-  -- that a Face with n bits is equivalent data to a Simp with =< n bits.
-  --
-  -- This pullback operation is similar to the composition of face maps.
-  -- In fact, composition of face maps may be defined as a relation in a similar style,
-  -- and when you do this, the definition looks exactly the same except for the 4th constructor below, 10pb.
-  -- It differs because F and H are representing ideals rather than faces.
-  -- F and H generate bigger ideals than just themselves.
-  data isPB : ∀ {n d : ℕ} → ∀ (F : Face n d) →
-              ∀ {m : ℕ} → ∀ (G : Face n m) →
-              ∀ {l : ℕ} → ∀ (H : Face m l) →
+  data isBuildOf0 (X0 : Set) :
+              ∀ {d : ℕ} → ∀ {F : Face 0 d} → ∀ (x : IdealIn0 X0 F) → 
+              ∀ {sd : ℕ} → ∀ {sF : Face 0 sd} → 
+              -- ∀ (fsf : isSucF F sF) →
+              ∀ (sx : IdealIn0 X0 sF) →
+              ∀ {e : ℕ} → ∀ {G : Face 0 e} → ∀ (y : IdealIn0 X0 G) →
+              ∀ {se : ℕ} → ∀ {sG : Face 0 se} → 
+              -- ∀ (gsg : isSucF G sG) →
+              ∀ (sy : IdealIn0 X0 sG) →
               Set where
-    -- The pullback of the empty ideal by the empty face is the empty ideal.
-    emppb : isPB (inc emp) (inc emp) (inc emp)
-    -- If you add a leading 0 to F and to G, you get the same pullback as before.
-    00pb : ∀ {n d : ℕ} → ∀ {F : Face n d} → ∀ {m : ℕ} → ∀ {G : Face n m} → ∀ {l : ℕ} → ∀ {H : Face m l} → isPB F G H →
-                isPB (0x F) (0x G) H
-    -- If you add a leading 0 to F and a leading 1 to G, you tack on a leading 0 to the pullback.
-    01pb : ∀ {n d : ℕ} → ∀ {F : Face n d} → ∀ {m : ℕ} → ∀ {G : Face n m} → ∀ {l : ℕ} → ∀ {H : Face m l} → isPB F G H →
-                isPB (0x F) (inc (1x G)) (0x H)
-    -- If you add a leading 1 to F and a leading 0 to G, 
-    -- your pullback will now be all 1's -- the same as pulling back G by itself. 
-    -- NOT CLEAR THIS IS THE BEST WAY TO ENCODE THIS!
-    10pb : ∀ {n d : ℕ} → ∀ (F : Face n d) → ∀ {m : ℕ} → ∀ {G : Face n m} → ∀ {H : Face m m} → isPB G G H →
-                isPB (inc (1x F)) (0x G) H
-    -- If you add a leading 1 to F and to G, your pullback will have a leading 1 tacked on.
-    11pb : ∀ {n d : ℕ} → ∀ {F : Face n d} → ∀ {m : ℕ} → ∀ {G : Face n m} → ∀ {l : ℕ} → ∀ {H : Face m l} → isPB F G H →
-               isPB (inc (1x F)) (inc (1x G)) (inc (1x H))
+                           
+  -- In dimension N+1, the definitions will be more complicated.
+  data IdealInN {N : ℕ} (XUnd : sSet N) (XFill : FillData XUnd) :
+                ∀ {d : ℕ} → ∀ (F : Face (suc N) d) →
+                Set
+  data isFaceOfN {N : ℕ} (XUnd : sSet N) (XFill : FillData XUnd) :
+                  ∀ {d : ℕ} → ∀ {F : Face (suc N) d} → IdealInN XUnd XFill F →
+                  ∀ {d' : ℕ} → ∀ {F' : Face (suc N) d'} → IdealInN XUnd XFill F' →
+                  ∀ {n' : ℕ} → ∀ (G : Face (suc N) n') →
+                  Set
 
-
-  --isPadOF F 00F holds if 00F is obtained from F by tacking on an arbitrary number of leading 0's.
-  -- I worry that the use of this relation is going to cause headaches trying to write pattern-matching proofs later.
-  data isPadOf : ∀ {n d : ℕ} → ∀ (F : Face n d) →
-                 ∀ {n' : ℕ} → ∀ (00F : Face n' d) →
-                 Set where
-    -- F is obtained from itself by tacking on zero leading 0's.
-    reflPad : ∀ {n d : ℕ} → ∀ (F : Face n d) →
-              isPadOf F F
-    -- If 00F is obtained from F by tacking on leading 0's, then so is 0(00F).
-    sucPad : ∀ {n d : ℕ} → ∀ {F : Face n d} → ∀ {n' : ℕ} → ∀ {00F : Face n' d} → ∀ (pf : isPadOf F 00F) →
-             isPadOf F (0x 00F)
+  data isBuildOfN {N : ℕ} (XUnd : sSet N) (XFill : FillData XUnd) : 
+              ∀ {d : ℕ} → ∀ {F : Face (suc N) d} → ∀ (x : IdealInN XUnd XFill F) → 
+              ∀ {sd : ℕ} → ∀ {sF : Face (suc N) sd} → 
+              -- ∀ (fsf : isSucF F sF) →
+              ∀ (sx : IdealInN XUnd XFill sF) →
+              ∀ {e : ℕ} → ∀ {G : Face (suc N) e} → ∀ (y : IdealInN XUnd XFill G) →
+              ∀ {se : ℕ} → ∀ {sG : Face (suc N) se} → 
+              -- ∀ (gsg : isSucF G sG) →
+              ∀ (sy : IdealInN XUnd XFill sG) →
+              Set
+                                
+  --Inductive definitions of all of this data.
+  IdealIn (Aug X0) = IdealIn0 X0
+  IdealIn (reedy XUnd XFill) = IdealInN XUnd XFill
+  
+  isFaceOf (Aug X0) = isFaceOf0 X0
+  isFaceOf (reedy XUnd XFill) = isFaceOfN XUnd XFill
     
-  Delta+ : ∀ (n : ℕ) → Simp n n
-  Delta+ zero = emp
-  Delta+ (suc n) = 1x (inc (Delta+ n))
+  -- isBuildOf (reedy XUnd XFill) = isBuildOfN XUnd XFill
+  isBuildOf (Aug X0) = isBuildOf0 X0
+  isBuildOf (reedy XUnd XFill) = isBuildOfN XUnd XFill
+                               
+  data IdealInN {N} XUnd XFill where
+    --Inherit ideals from the previous dimension. Need to tack on a leading zero.
+    oldN : ∀ {d : ℕ} → ∀ {F : Face N d} → ∀ (x : IdealIn XUnd F) →
+            IdealInN XUnd XFill (0x F)
+    -- Promote the ideal given by filling a sphere from the previous dimension.
+    fillN : ∀ {x : IdealIn XUnd (PreDelta+ N)} → ∀ (z : FillData.FillX XFill x) →
+             IdealInN XUnd XFill (0x (inc (Delta+ N)))
 
-  EmpInc : ∀ (n : ℕ) → Face n zero
-  EmpInc zero = inc emp
-  EmpInc (suc n) = 0x (EmpInc n)
+    --Build a new closed ideal from an open ideal and some previously-constructed filling data.
+    -- sF is required to be a simplex, so that it is a *new* thing to build and not already previously constructed.
+    -- x is of shape "strictly below sF".
+    -- y is the sF-face of x, i.e. the boundary of the next simplex to be added to complete to "weakly below sF".
+    -- so y ought to be of shape "boundary of a simplex", but this is not enforced explicitly.
+    -- sy is an ideal (so should be in fact a simplex) filling y.
+    -- We obtain buildN z xy of shape "weakly below S" by gluing z onto x along y.
+    buildN :  ∀ {d : ℕ} → ∀ {F : Face (suc N) d} → ∀ (x : IdealInN XUnd XFill F) → 
+              ∀ {sd : ℕ} → ∀ {sF : Simp (suc N) (suc sd)} → ∀ (fsf : isSucF F (inc sF)) →
+              ∀ {e : ℕ} → ∀ {G : Face (suc N) e} → ∀ {y : IdealInN XUnd XFill G} →  ∀ (xy : isFaceOfN XUnd XFill x y (inc sF)) →
+              ∀ {se : ℕ} → ∀ {sG : Face (suc N) (suc se)} → ∀ (gsg : isSucF G sG) →
+              ∀ (sy : IdealInN XUnd XFill sG) →
+              ∀ (ysy : isBuildOfN XUnd XFill y sy y sy) → 
+              IdealInN XUnd XFill (inc sF)
+  
+  data isFaceOfN {N} XUnd XFill where
+    --Inherit face relations from the previous dimension. Need to tack on a leading zero.
+    -- If x' is a G - face of x in the previous dimension, 
+    -- then oldN x' is a 0x G - face of oldN x, and also a 1x G -face of oldN x.
+    oldOld0N : ∀ {d : ℕ} → ∀ {F : Face N d} → ∀ {d' : ℕ} → ∀ {F' : Face N d'} → ∀ {n' : ℕ} → ∀ {G : Face N n'} → 
+                          ∀ {x : IdealIn XUnd F} → ∀ {x' : IdealIn XUnd F'} → ∀ (xx' : isFaceOf XUnd x x' G) →
+              isFaceOfN XUnd XFill (oldN x) (oldN x') (0x G)
+    oldOld1N : ∀ {d : ℕ} → ∀ {F : Face N d} → ∀ {d' : ℕ} → ∀ {F' : Face N d'} → ∀ {n' : ℕ} → ∀ {G : Face N n'} → 
+                          ∀ {x : IdealIn XUnd F} → ∀ {x' : IdealIn XUnd F'} → ∀ (xx' : isFaceOf XUnd x x' G) →
+              isFaceOfN XUnd XFill (oldN x) (oldN x') (inc (1x G))
 
-  Point : ∀ (n : ℕ) → Simp (suc n) (suc zero)
-  Point n = 1x (EmpInc n)
+    -- When filling a top-dimensional sphere from the previous dimension, need to inherit faces from the boundary being filled.
+    -- If x is an N-sphere filled by z, and x' is an old G-face of x,
+    -- then oldN x' is a 0x G - face of fillN z, and also a 1x G - face of fillN z.
+    oldFill0N : ∀ {x : IdealIn XUnd (PreDelta+ N)} → ∀ (z : FillData.FillX XFill x) →
+               ∀ {d : ℕ} → ∀ {F : Face N d} → ∀ {x' : IdealIn XUnd F} → ∀ {n' : ℕ} → ∀ {G : Face N n'} → ∀ (xx' : isFaceOf XUnd x x' G) →
+               isFaceOfN XUnd XFill (fillN z)  (oldN x') (0x G)
+    oldFill1N : ∀ {x : IdealIn XUnd (PreDelta+ N)} → ∀ (z : FillData.FillX XFill x) →
+               ∀ {d : ℕ} → ∀ {F : Face N d} → ∀ {x' : IdealIn XUnd F} → ∀ {n' : ℕ} → ∀ {G : Face N n'} → ∀ (xx' : isFaceOf XUnd x x' G) →
+               isFaceOfN XUnd XFill (fillN z)  (oldN x') (inc (1x G))
 
-  predN : ℕ → ℕ
-  predN zero = zero
-  predN (suc n) = n
+    -- When filling a top-dimensional sphere from the previous dimension, need to put in a reflexivity face relation.
+    -- There are actually two -- one for the face 111111 and one for the face 011111
+    reflFill0N : ∀ {x : IdealIn XUnd (PreDelta+ N)} → ∀ (z : FillData.FillX XFill x) →
+                isFaceOfN XUnd XFill (fillN z) (fillN z) (0x (inc (Delta+ N)))
+    reflFill1N : ∀ {x : IdealIn XUnd (PreDelta+ N)} → ∀ (z : FillData.FillX XFill x) →
+                isFaceOfN XUnd XFill (fillN z) (fillN z) (inc (1x (inc (Delta+ N))))
 
-  PreDelta+ : ∀ (n : ℕ) → Face n (predN n)
-  PreDelta+ zero = inc emp
-  PreDelta+ (suc zero) = 0x (inc emp)
-  PreDelta+ (suc (suc n)) = inc (1x (PreDelta+(suc n)))
+    -- When building a new ideal, need to inherit faces from the open ideal being filled.
+    -- This function takes 21 arguments, 7 of them explicit. I believe it is the second-longest type signature in the file.
+    -- sF is required to be a simplex, so that it is a *new* thing to build and not already previously constructed.
+    -- x is of shape "strictly below sF".
+    -- y is the sF-face of x, i.e. the boundary of the next simplex to be added to complete to "weakly below sF".
+    -- so y ought to be of shape "boundary of a simplex", but this is not enforced explicitly.
+    -- sy is an ideal (so should be in fact a simplex) filling y.
+    -- x' is a face of x.
+    -- conclude that, when you glue sy to x along y, you have x' as a face.
+    oldBuildN : ∀ {d : ℕ} → ∀ {F : Face (suc N) d} → ∀ (x : IdealInN XUnd XFill F) → 
+              ∀ {sd : ℕ} → ∀ {sF : Simp (suc N) (suc sd)} → ∀ (fsf : isSucF F (inc sF)) →
+              ∀ {e : ℕ} → ∀ {G : Face (suc N) e} → ∀ {y : IdealInN XUnd XFill G} →  ∀ (xy : isFaceOfN XUnd XFill x y (inc sF)) →
+              ∀ {se : ℕ} → ∀ {sG : Face (suc N) (suc se)} → ∀ (gsg : isSucF G sG) →
+              ∀ (sy : IdealInN XUnd XFill sG) →
+              ∀ (ysy : isBuildOfN XUnd XFill y sy y sy) → 
+              ∀ {d' : ℕ} → ∀ {F' : Face (suc N) d'} →  ∀ {x' : IdealInN XUnd XFill F'} → 
+                             ∀ {n' : ℕ} → ∀ {H : Face (suc N) n'} → ∀ (xx' : isFaceOfN XUnd XFill x x' H) →
+              isFaceOfN XUnd XFill (buildN x fsf xy gsg sy ysy) x' H
 
-  PreDelta : ∀ (n : ℕ) → Face (suc n) n
-  PreDelta zero = 0x (inc emp)
-  PreDelta (suc n) = inc (1x (PreDelta n))
+    -- When building a new ideal, need to put in "mixed" faces, built from faces of the open ideal being filled and the filling data.
+    -- This constructor takes 32 arguments, 13 of them explicit. I believe that's the longest in the file.
+    -- sF is required to be a simplex, so that it is a *new* thing to build and not already previously constructed.
+    -- x is of shape "strictly below sF".
+    -- y is the sF-face of x, i.e. the boundary of the next simplex to be added to complete to "weakly below sF".
+    -- so y ought to be of shape "boundary of a simplex", but this is not enforced explicitly.
+    -- sy is an ideal (so should be in fact a simplex) filling y.
+    -- x' is a face of x.
+    -- conclude that when you glue sy to x along y, then sx' is a face.
+    mixBuildN : ∀ {d : ℕ} → ∀ {F : Face (suc N) d} → ∀ (x : IdealInN XUnd XFill F) → 
+              ∀ {sd : ℕ} → ∀ {sF : Simp (suc N) (suc sd)} → ∀ (fsf : isSucF F (inc sF)) →
+              ∀ {e : ℕ} → ∀ {G : Face (suc N) e} → ∀ {y : IdealInN XUnd XFill G} →  ∀ (xy : isFaceOfN XUnd XFill x y (inc sF)) →
+              ∀ {se : ℕ} → ∀ {sG : Face (suc N) (suc se)} → ∀ (gsg : isSucF G sG) →
+              ∀ (sy : IdealInN XUnd XFill sG) →
+              ∀ (ysy : isBuildOfN XUnd XFill y sy y sy) → 
+              ∀ {d' : ℕ} → ∀ {F' : Face (suc N) d'} →  ∀ {x' : IdealInN XUnd XFill F'} → 
+                             ∀ {n' : ℕ} → ∀ {H : Face (suc N) n'} → ∀ (xx' : isFaceOfN XUnd XFill x x' H) →
+              ∀ {sd' : ℕ} → ∀ {sF' : Simp (suc N) (suc sd)} → ∀ (f'sf' : isSucF F' (inc sF')) →
+              ∀ (x'y : isFaceOfN XUnd XFill x' y (inc sF')) →
+              ∀ {sx' : IdealInN XUnd XFill (inc sF')} → ∀ (x'sx'ysy : isBuildOfN XUnd XFill x' sx' y sy) → 
+              ∀ {n'' : ℕ} → ∀ {F'' : Face n' n''} → ∀ (shf'' : isPB (inc sF) H F'') →
+              ∀ {00F'' : Face (suc N) n''} → ∀ (00f'' : isPadOf F'' 00F'') →
+              isFaceOfN XUnd XFill (buildN x fsf xy gsg sy ysy) sx' 00F''
+
+  data isBuildOfN {N} XUnd XFill where
+    -- Carry forward the old build relations from XUnd.
+    oldIsBuildN : ∀ {d : ℕ} → ∀ {F : Face N d} → ∀ (x : IdealIn XUnd F) → 
+              ∀ {sd : ℕ} → ∀ {sF : Face N (suc sd)} → ∀ (fsf : isSucF F sF) →
+              ∀ (sx : IdealIn XUnd sF) →
+              ∀ {e : ℕ} → ∀ {G : Face N e} → ∀ (y : IdealIn XUnd G) →
+              ∀ {se : ℕ} → ∀ {sG : Face N (suc se)} → ∀ (gsg : isSucF G sG) →
+              ∀ (sy : IdealIn XUnd sG) →
+              isBuildOf XUnd x sx y sy →
+              isBuildOfN XUnd XFill (oldN x) (oldN sx) (oldN y) (oldN sy)
+    -- When filling an N-boundary, we have a reflexive build relationship.
+    fillIsBuildN : ∀ {x : IdealIn XUnd (PreDelta+ N)} → ∀ (z : FillData.FillX XFill x) →
+                 isBuildOfN XUnd XFill (oldN x) (fillN z) (oldN x) (fillN z)
+    -- When we build a new ideal, record it here.
+    buildIsBuildN : ∀ {d : ℕ} → ∀ {F : Face (suc N) d} → ∀ (x : IdealInN XUnd XFill F) → 
+              ∀ {sd : ℕ} → ∀ {sF : Simp (suc N) (suc sd)} → ∀ (fsf : isSucF F (inc sF)) →
+              ∀ {e : ℕ} → ∀ {G : Face (suc N) e} → ∀ {y : IdealInN XUnd XFill G} →  ∀ (xy : isFaceOfN XUnd XFill x y (inc sF)) →
+              ∀ {se : ℕ} → ∀ {sG : Face (suc N) (suc se)} → ∀ (gsg : isSucF G sG) →
+              ∀ (sy : IdealInN XUnd XFill sG) →
+              ∀ (ysy : isBuildOfN XUnd XFill y sy y sy) → 
+              isBuildOfN XUnd XFill x (buildN x fsf xy gsg sy ysy) y sy
+  
