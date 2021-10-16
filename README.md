@@ -10,6 +10,6 @@ Ultimately, this yields a a definition of the type of maps from the boundary of 
 We then define X in terms of a type of "fillers" for each such boundary map.
 
 The filtration we use relies on defining binary natural numbers in a big-endian representation, in big-endian.agda.
-This implementation is based on the little-endian implementation in BinNat.agda by Anders Mortberg.
+This implementation is based on the little-endian implementation in https://github.com/agda/cubical/blob/master/Cubical/Data/BinNat/BinNat.agda by Anders Mortberg.
 
 For now, see the code comments for further explanation.
