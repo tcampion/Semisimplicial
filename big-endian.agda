@@ -23,7 +23,7 @@ module big-endian where
   data Face : ∀ (n : ℕ) →
               ∀ (d : ℕ) →
               Set
-  -- This mutually inductive definition is inspired by a presumably-standard definition of little-endian natural numbers
+  -- This mutually inductive definition is inspired by a definition of little-endian natural numbers
   -- which Anders Mortberg has implemented in Agda.
   -- A simplex is either empty, or it's a face capped by a leading 1.
   data Simp where
@@ -37,7 +37,8 @@ module big-endian where
     0x : ∀ {n d : ℕ} → Face n d →
          Face (suc n) d
 
-  -- These tell you if there is a carry when taking the successor of your simplex / face. That is, they hold if and only if your simplex / face is all 1's.
+  -- These tell you if there is a carry when taking the successor of your simplex / face. 
+  -- That is, they hold if and only if your simplex / face is all 1's.
   data ModCarryS : ∀ {n d : ℕ} → Simp n d → 
                    Set
   data ModCarryF : ∀ {n d : ℕ} → Face n d → 
@@ -50,21 +51,22 @@ module big-endian where
     inccarry : ∀ {n d : ℕ} → ∀ {S : Simp n d} → ModCarryS S → 
                ModCarryF (inc S)
 
-  --I'm pretty sure that isModSuc F sF is supposed to hold iff 
-  --they have the same number n of bits AND sF is the successor of F MODULO 2^n
-  -- I THINK that isModSuc might just be entirely unnecessary.
-  -- Really just need it for the carry-over from 1111 to 0000. This could be done by hand.
-  -- Possibly it would be annoying if you needed some simplex to be definitionally equal to 1111 to invoke it though.
+  -- isModSuc F sF holds iff 
+  -- F and sF have the same number n of bits AND sF is the successor of F MODULO 2^n
+  -- (isModSuc might be redundant, Really just need it for the carry-over from 1111 to 0000.
+  --  This could be done by hand; 
+  -- possibly it would be annoying if you needed some simplex to be definitionally equal to 1111 to invoke it?)
   data isModSuc : ∀ {n d : ℕ} → Face n d →
                   ∀ {d' : ℕ} → Face n d' →
                   Set
   --Then isSucF F sF holds iff 
-  --they have the same number on of bits AND sF is the successor of F (in particular, 2^n - 1 has no "flat successor")
-  --Apologies "flat successor" is a weird name.
+  --F,sF have the same number on of bits AND sF is the successor of F (in particular, 2^n - 1 has no "flat successor")
+  --Apologies: "flat successor" is a weird name.
   data isSucF : ∀ {n d : ℕ} → Face n d →
                 ∀ {d' : ℕ} → Face n (suc d') →
                 Set
-  --isSuc is a vanilla successor indicator -- isSuc S sS holds iff suc(S) = sS (they may fail to have the same number of bits)
+  --isSuc is a vanilla successor indicator:
+  -- isSuc S sS holds iff suc(S) = sS (they may fail to have the same number of bits)
   data isSuc : ∀ {n d : ℕ} → Simp n d →
                ∀ {n' d' : ℕ} → Simp (suc n') (suc d') →
                Set
@@ -87,10 +89,12 @@ module big-endian where
     sfcarry : ∀ {n d : ℕ} → ∀ {F : Face n d} → ∀ {d' : ℕ} → ∀ {msF : Face n d'} → isModSuc F msF →
                    ModCarryF F →
                    isSucF (0x F) (inc (1x msF))
-    -- This says that if F has a successor sF with the same number of bits, then suc(0F) = 0(sF) (with the same number of bits)
+    -- This says that if F has a successor sF with the same number of bits, 
+    -- then suc(0F) = 0(sF) (with the same number of bits)
     sf0x : ∀ {n d : ℕ} → ∀ {F : Face (suc n) d} → ∀ {d' : ℕ} → ∀ {sF : Face (suc n) (suc d')} → isSucF F sF →
                 isSucF (0x F) (0x sF)
-    -- This says that if F has a successor sF with the same number of bits, then suc(1F) = 1(sF) (with the same number of bits)
+    -- This says that if F has a successor sF with the same number of bits,
+    -- then suc(1F) = 1(sF) (with the same number of bits)
     sf1x : ∀ {n d : ℕ} → ∀ {F : Face (suc n) d} → ∀ {d' : ℕ} → ∀ {sF : Face (suc n) (suc d')} → isSucF F sF →
                 isSucF (inc (1x F)) (inc (1x sF))
   data isSuc where
